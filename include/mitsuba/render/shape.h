@@ -166,6 +166,7 @@ public:
 
 	/// Primitive index, e.g. the triangle ID (if applicable)
 	uint32_t primIndex : 31;
+	uint32_t other : 31;
 
 	/// Stores a pointer to the parent instance, if applicable
 	const Shape *instance;
