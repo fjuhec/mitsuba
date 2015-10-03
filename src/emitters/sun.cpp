@@ -139,7 +139,7 @@ public:
 		/* Solid angle covered by the sun */
 		m_theta = degToRad(SUN_APP_RADIUS * 0.5f);
 		m_solidAngle = 2 * M_PI * (1 - std::cos(m_theta));
-		m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
+		m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity);
 	}
 
 	bool isCompound() const {
@@ -156,7 +156,7 @@ public:
 			props.setVector("direction", -trafo(m_sunDir));
 			props.setFloat("samplingWeight", m_samplingWeight);
 
-			props.setSpectrum("irradiance", m_radiance * m_solidAngle);
+			props.setSpectrum("irradiance", m_radiance * m_scale * m_solidAngle);
 
 			Emitter *emitter = static_cast<Emitter *>(
 				PluginManager::getInstance()->createObject(
@@ -196,8 +196,10 @@ public:
 			bitmap->getHeight() / M_PI);
 
 		Spectrum *target = (Spectrum *) bitmap->getFloatData();
+		/* Multiply radiance by .5 to try to prevent values grater than
+		   the maximum allowed value of 65535 per pixel */
 		Spectrum value =
-			m_radiance * (2 * M_PI * (1-std::cos(m_theta))) *
+			m_radiance * 0.5f * (2 * M_PI * (1-std::cos(m_theta))) *
 			static_cast<Float>(bitmap->getWidth() * bitmap->getHeight())
 			/ (2 * M_PI * M_PI * nSamples);
 
@@ -223,6 +225,9 @@ public:
 		props.setData("bitmap", bitmapData);
 		props.setAnimatedTransform("toWorld", m_worldTransform);
 		props.setFloat("samplingWeight", m_samplingWeight);
+		/* Pass the scale multiplied by 2 to the final computed envmap
+		   to undo the previous radiance operation */
+		props.setFloat("scale", m_scale * 2.0f);
 		Emitter *emitter = static_cast<Emitter *>(
 			PluginManager::getInstance()->createObject(
 			MTS_CLASS(Emitter), props));

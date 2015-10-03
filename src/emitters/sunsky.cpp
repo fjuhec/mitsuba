@@ -105,6 +105,20 @@ public:
 			  sunRadiusScale = props.getFloat("sunRadiusScale", 1.0f);
 
 		const Transform &trafo = m_worldTransform->eval(0);
+		/* Compute sun radiance with sun scale applied to get a
+		   compensation factor for huge radiance values */
+		SphericalCoordinates sun = computeSunCoordinates(props);
+		Spectrum sunRadiance = computeSunRadiance(sun.elevation,
+			props.getFloat("turbidity", 3.0f)) * sunScale;
+		Float radianceFactor = 65535.0f / sunRadiance.max();
+		if (radianceFactor < 1.0f) {
+			Log(EWarn, "Sun radiance exceeds maximum value of 65535, scaling down to compensate.");
+			skyScale *= radianceFactor;
+			sunRadiance *= radianceFactor;
+			scale = 1.0f / radianceFactor;
+		} else {
+			scale = 1.0f;
+		}
 
 		Properties skyProps(props);
 		skyProps.removeProperty("toWorld");
@@ -146,7 +160,8 @@ public:
 				RayDifferential ray(Point(0.0f),
 					toSphere(SphericalCoordinates(theta, phi)), 0.0f);
 
-				*target++ = sky->evalEnvironment(ray);
+				/* Multiply by .5, will be restored on final envmap */
+				*target++ = sky->evalEnvironment(ray) * 0.5f;
 			}
 		}
 
@@ -161,9 +176,6 @@ public:
 		   pixel in the output environment map will be covered
 		   by the sun */
 
-		SphericalCoordinates sun = computeSunCoordinates(props);
-		Spectrum sunRadiance = computeSunRadiance(sun.elevation,
-			props.getFloat("turbidity", 3.0f)) * sunScale;
 		sun.elevation *= props.getFloat("stretch", 1.0f);
 		Frame sunFrame = Frame(toSphere(sun));
 
@@ -174,7 +186,7 @@ public:
 			Properties props("directional");
 			props.setVector("direction", -trafo(sunFrame.n));
 			props.setFloat("samplingWeight", m_samplingWeight);
-			props.setSpectrum("irradiance", sunRadiance * solidAngle);
+			props.setSpectrum("irradiance", sunRadiance * scale * solidAngle);
 
 			m_dirEmitter = static_cast<Emitter *>(
 				PluginManager::getInstance()->createObject(
@@ -194,8 +206,10 @@ public:
 			factor = Point2(bitmap->getWidth() / (2*M_PI),
 				bitmap->getHeight() / M_PI);
 
+			/* Multiply radiance by .5 to try to prevent values grater than
+			   the maximum allowed value of 65535 per pixel */
 			Spectrum value =
-				sunRadiance * (2 * M_PI * (1-std::cos(theta))) *
+				sunRadiance * 0.5f * (2 * M_PI * (1-std::cos(theta))) *
 				static_cast<Float>(bitmap->getWidth() * bitmap->getHeight())
 				/ (2 * M_PI * M_PI * nSamples);
 
@@ -225,6 +239,9 @@ public:
 		envProps.setData("bitmap", bitmapData);
 		envProps.setAnimatedTransform("toWorld", m_worldTransform);
 		envProps.setFloat("samplingWeight", m_samplingWeight);
+		/* Pass the scale multiplied by 2 to the final computed envmap
+		   to undo the previous operations */
+		envProps.setFloat("scale", scale * 2.0f);
 		m_envEmitter = static_cast<Emitter *>(
 			PluginManager::getInstance()->createObject(
 			MTS_CLASS(Emitter), envProps));
