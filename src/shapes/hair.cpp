@@ -826,8 +826,6 @@ void HairShape::fillIntersectionRecord(const Ray &ray,
 	const void *temp, Intersection &its) const {
 	/* No UV coordinates for now */
 	its.uv = Point2(0,0);
-	its.dpdu = Vector(0,0,0);
-	its.dpdv = Vector(0,0,0);
 
 	const HairKDTree::IntersectionStorage *storage =
 		static_cast<const HairKDTree::IntersectionStorage *>(temp);
@@ -844,6 +842,8 @@ void HairShape::fillIntersectionRecord(const Ray &ray,
 	/* Migitate roundoff error issues by a normal shift of the computed intersection point */
 	const Vector local = its.geoFrame.toLocal(relHitPoint);
 	its.p += its.geoFrame.n * (m_kdtree->getRadius() - std::sqrt(local.y*local.y+local.z*local.z));
+	its.dpdu = Vector(-local.y, local.x, 0) * (2*M_PI);
+	its.dpdv = Vector(0, 0, local.z);
 
 	its.shFrame.n = its.geoFrame.n;
 	its.hasUVPartials = false;
