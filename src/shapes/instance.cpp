@@ -76,7 +76,7 @@ void Instance::configure() {
 
 	const std::vector<const Shape *> &shapes = m_shapeGroup->getKDTree()->getShapes();
 
-	if (shapes.size() > 1 and m_emitter)
+	if (shapes.size() > 1 && m_emitter)
 		Log(EError, "Instances with multiple shapes cannot have an emitter!");
 }
 
