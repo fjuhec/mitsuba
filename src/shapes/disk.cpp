@@ -121,10 +121,10 @@ public:
 		AABB aabb;
 		for (std::set<Float>::iterator it = times.begin(); it != times.end(); ++it) {
 			const Transform &trafo = m_objectToWorld->eval(*it);
-			aabb.expandBy(trafo(Point( 1,  0, 0)));
-			aabb.expandBy(trafo(Point(-1,  0, 0)));
-			aabb.expandBy(trafo(Point( 0,  1, 0)));
-			aabb.expandBy(trafo(Point( 0, -1, 0)));
+			aabb.expandBy(trafo(Point(-1, -1, 0)));
+			aabb.expandBy(trafo(Point( 1, -1, 0)));
+			aabb.expandBy(trafo(Point( 1,  1, 0)));
+			aabb.expandBy(trafo(Point(-1,  1, 0)));
 		}
 		return aabb;
 	}
@@ -138,7 +138,7 @@ public:
 
 	inline bool rayIntersect(const Ray &_ray, Float mint, Float maxt, Float &t, void *temp) const {
 		Ray ray;
-		m_objectToWorld->eval(ray.time).inverse().transformAffine(_ray, ray);
+		m_objectToWorld->eval(_ray.time).inverse().transformAffine(_ray, ray);
 		Float hit = -ray.o.z / ray.d.z;
 
 		if (!(hit >= mint && hit <= maxt))
@@ -249,7 +249,7 @@ public:
 		Point2 p = warp::squareToUniformDiskConcentric(sample);
 
 		pRec.p = trafo(Point3(p.x, p.y, 0));
-		pRec.n = trafo(normalize(Normal(0,0,1)));
+		pRec.n = normalize(trafo(Normal(0, 0, 1)));
 		pRec.pdf = m_invSurfaceArea;
 		pRec.measure = EArea;
 	}
