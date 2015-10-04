@@ -47,6 +47,19 @@ Film::Film(const Properties &props)
 		m_cropOffset.y + m_cropSize.y > m_size.y )
 		Log(EError, "Invalid crop window specification!");
 
+	/* For anamorphic pixels and sensor shift */
+	m_fitHorizontal = props.getBoolean("fitHorizontal", true);
+	Float pixelAspectX = props.getFloat("pixelAspectX", 1.0f),
+	      pixelAspectY = props.getFloat("pixelAspectY", 1.0f);
+	if (m_fitHorizontal)
+		m_pixelAspect = Point2(1.0f, pixelAspectX / pixelAspectY);
+	else
+		m_pixelAspect = Point2(pixelAspectY / pixelAspectX, 1.0f);
+	m_shift = Vector2(
+		props.getFloat("shiftX", 0.0f),
+		props.getFloat("shiftY", 0.0f)
+	);
+
 	/* If set to true, regions slightly outside of the film
 	   plane will also be sampled, which improves the image
 	   quality at the edges especially with large reconstruction
@@ -57,6 +70,9 @@ Film::Film(const Properties &props)
 Film::Film(Stream *stream, InstanceManager *manager)
  : ConfigurableObject(stream, manager) {
 	m_size = Vector2i(stream);
+	m_shift = Vector2(stream);
+	m_pixelAspect = Point2(stream);
+	m_fitHorizontal = stream->readBool();
 	m_cropOffset = Point2i(stream);
 	m_cropSize = Vector2i(stream);
 	m_highQualityEdges = stream->readBool();
@@ -68,6 +84,9 @@ Film::~Film() { }
 void Film::serialize(Stream *stream, InstanceManager *manager) const {
 	ConfigurableObject::serialize(stream, manager);
 	m_size.serialize(stream);
+	m_shift.serialize(stream);
+	m_pixelAspect.serialize(stream);
+	stream->writeBool(m_fitHorizontal);
 	m_cropOffset.serialize(stream);
 	m_cropSize.serialize(stream);
 	stream->writeBool(m_highQualityEdges);

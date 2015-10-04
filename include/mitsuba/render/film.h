@@ -45,6 +45,15 @@ public:
 	/// Return the offset of the crop window
 	inline const Point2i &getCropOffset() const { return m_cropOffset; }
 
+	/// Return the sensor shift
+	inline const Vector2 &getShift() const { return m_shift; }
+
+	/// Return the pixel aspect
+	inline const Point2 &getPixelAspect() const { return m_pixelAspect; }
+
+	/// Return the fit method for sensor shift and pixel aspect computation
+	inline bool fitHorizontal() const { return m_fitHorizontal; }
+
 	/// Clear the film
 	virtual void clear() = 0;
 
@@ -129,6 +138,9 @@ protected:
 protected:
 	Point2i m_cropOffset;
 	Vector2i m_size, m_cropSize;
+	Vector2 m_shift;
+	Point2 m_pixelAspect;
+	bool m_fitHorizontal;
 	bool m_highQualityEdges;
 	ref<ReconstructionFilter> m_filter;
 };

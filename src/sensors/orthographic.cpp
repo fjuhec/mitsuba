@@ -86,6 +86,8 @@ public:
 		const Vector2i &filmSize   = m_film->getSize();
 		const Vector2i &cropSize   = m_film->getCropSize();
 		const Point2i  &cropOffset = m_film->getCropOffset();
+		const Vector2  &shift      = m_film->getShift();
+		const Point2  &pixelAspect = m_film->getPixelAspect();
 
 		Vector2 relSize((Float) cropSize.x / (Float) filmSize.x,
 			(Float) cropSize.y / (Float) filmSize.y);
@@ -107,9 +109,21 @@ public:
 		m_cameraToSample =
 			  Transform::scale(Vector(1.0f / relSize.x, 1.0f / relSize.y, 1.0f))
 			* Transform::translate(Vector(-relOffset.x, -relOffset.y, 0.0f))
-			* Transform::scale(Vector(-0.5f, -0.5f*m_aspect, 1.0f))
-			* Transform::translate(Vector(-1.0f, -1.0f/m_aspect, 0.0f))
+			* Transform::scale(Vector(-0.5f * pixelAspect.x, -0.5f*m_aspect * pixelAspect.y, 1.0f))
+			* Transform::translate(Vector(-1.0f / pixelAspect.x, -1.0f/m_aspect / pixelAspect.y, 0.0f))
 			* Transform::orthographic(m_nearClip, m_farClip);
+
+		Point cameraScale(m_cameraToSample.inverse()(Point(0, 0, 0)));
+		Float scale = 2.0f;
+
+		if (m_film->fitHorizontal())
+			scale *= cameraScale.x;
+		else
+			scale *= cameraScale.y;
+
+		/* Apply camera shift */
+		m_cameraToSample = m_cameraToSample
+			* Transform::translate(Vector(shift.x * scale, shift.y * -scale, 0.0f));
 
 		m_sampleToCamera = m_cameraToSample.inverse();
 
