@@ -46,7 +46,7 @@ inline bool Intersection::hasSubsurface() const {
 }
 
 inline bool Intersection::isEmitter() const {
-	return shape->isEmitter();
+	return (instance ? instance : shape)->isEmitter();
 }
 
 inline bool Intersection::isSensor() const {
@@ -54,7 +54,7 @@ inline bool Intersection::isSensor() const {
 }
 
 inline Spectrum Intersection::Le(const Vector &d) const {
-	return shape->getEmitter()->eval(*this, d);
+	return (instance ? instance : shape)->getEmitter()->eval(*this, d);
 }
 
 inline Spectrum Intersection::LoSub(const Scene *scene,
@@ -172,7 +172,7 @@ void DirectSamplingRecord::setQuery(const Ray &ray, const Intersection &its, EMe
 	n = its.shFrame.n;
 	measure = _measure;
 	uv = its.uv;
-	object = its.shape->getEmitter();
+	object = (its.instance ? its.instance : its.shape)->getEmitter();
 	d = ray.d;
 	dist = its.t;
 }

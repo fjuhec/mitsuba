@@ -713,15 +713,20 @@ void SceneHandler::endElement(const XMLCh* const xmlName) {
 					object = m_pluginManager->createObject(tag.second, props);
 
 					if (!trafo->isStatic()) {
+						ConfigurableObject *emitter=NULL;
 						object = m_pluginManager->createObject(tag.second, props);
 						/* If the object has children, append them */
 						for (std::vector<std::pair<std::string, ConfigurableObject *> >
 								::iterator it = context.children.begin();
 								it != context.children.end(); ++it) {
 							if (it->second != NULL) {
-								object->addChild(it->first, it->second);
-								it->second->setParent(object);
-								it->second->decRef();
+								if (it->second->getClass()->derivesFrom(MTS_CLASS(Emitter))) {
+									emitter = it->second;
+								} else {
+									object->addChild(it->first, it->second);
+									it->second->setParent(object);
+									it->second->decRef();
+								}
 							}
 						}
 						context.children.clear();
@@ -737,6 +742,11 @@ void SceneHandler::endElement(const XMLCh* const xmlName) {
 						instanceProps.setAnimatedTransform("toWorld", trafo);
 						object = m_pluginManager->createObject(instanceProps);
 						object->addChild(shapeGroup);
+						if (emitter) {
+							object->addChild(emitter);
+							emitter->setParent(object);
+							emitter->decRef();
+						}
 
 					}
 				} else {

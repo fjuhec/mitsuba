@@ -54,6 +54,14 @@ public:
 	/// Return the underlying animated transformation
 	inline const AnimatedTransform *getAnimatedTransform() const { return m_transform.get(); }
 
+	/// Returns the surface area
+	Float getSurfaceArea() const;
+
+	void samplePosition(PositionSamplingRecord &pRec,
+			const Point2 &sample) const;
+
+	Float pdfPosition(const PositionSamplingRecord &pRec) const;
+
 	// =============================================================
 	//! @{ \name Implementation of the Shape interface
 	// =============================================================

@@ -73,6 +73,11 @@ void Instance::serialize(Stream *stream, InstanceManager *manager) const {
 void Instance::configure() {
 	if (!m_shapeGroup)
 		Log(EError, "A reference to a 'shapegroup' must be specified!");
+
+	const std::vector<const Shape *> &shapes = m_shapeGroup->getKDTree()->getShapes();
+
+	if (shapes.size() > 1 and m_emitter)
+		Log(EError, "Instances with multiple shapes cannot have an emitter!");
 }
 
 AABB Instance::getAABB() const {
@@ -184,6 +189,47 @@ void Instance::getNormalDerivative(const Intersection &its,
 
 	dndu -= tn * dot(tn, dndu);
 	dndv -= tn * dot(tn, dndv);
+}
+
+Float Instance::getSurfaceArea() const {
+	const std::vector<const Shape *> &shapes = m_shapeGroup->getKDTree()->getShapes();
+
+	if (shapes.size() == 1) {
+		const TriMesh *mesh = static_cast<const TriMesh *>(shapes[0]);
+		return mesh->getSurfaceArea();
+	} else {
+		return 0.0f;
+	}
+}
+
+void Instance::samplePosition(PositionSamplingRecord &pRec,
+		const Point2 &_sample) const {
+	const std::vector<const Shape *> &shapes = m_shapeGroup->getKDTree()->getShapes();
+
+	if (shapes.size() == 1) {
+		const TriMesh *mesh =
+			static_cast<const TriMesh *>(shapes[0]);
+
+		const Transform &trafo = m_transform->eval(pRec.time);
+
+		mesh->samplePosition(pRec, _sample);
+		pRec.p = trafo(pRec.p);
+		pRec.n = normalize(trafo(pRec.n));
+		pRec.measure = EArea;
+	} else {
+		Log(EError, "samplePosition only allowed on single shape instances!");
+	}
+}
+
+Float Instance::pdfPosition(const PositionSamplingRecord &pRec) const {
+	const std::vector<const Shape *> &shapes = m_shapeGroup->getKDTree()->getShapes();
+
+	if (shapes.size() == 1) {
+		const TriMesh *mesh = static_cast<const TriMesh *>(shapes[0]);
+		return mesh->pdfPosition(pRec);
+	} else {
+		Log(EError, "pdfPosition only allowed on single shape instances!");
+	}
 }
 
 MTS_IMPLEMENT_CLASS_S(Instance, false, Shape)
