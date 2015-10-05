@@ -35,6 +35,8 @@ MTS_NAMESPACE_BEGIN
 # define SUN_PIXELFORMAT Bitmap::ESpectrum
 #endif
 
+#define MTS_SUN_OVERFLOW_WORKAROUND 2.0f
+
 /*!\plugin{sun}{Sun emitter}
  * \icon{emitter_sun}
  * \order{7}
@@ -196,10 +198,10 @@ public:
 			bitmap->getHeight() / M_PI);
 
 		Spectrum *target = (Spectrum *) bitmap->getFloatData();
-		/* Multiply radiance by .5 to try to prevent values grater than
-		   the maximum allowed value of 65535 per pixel */
+		/* Divide radiance by defined value to try to prevent pixel overflow.
+		   The maximum allowed value per pixel is 65535 */
 		Spectrum value =
-			m_radiance * 0.5f * (2 * M_PI * (1-std::cos(m_theta))) *
+			(m_radiance / MTS_SUN_OVERFLOW_WORKAROUND) * (2 * M_PI * (1-std::cos(m_theta))) *
 			static_cast<Float>(bitmap->getWidth() * bitmap->getHeight())
 			/ (2 * M_PI * M_PI * nSamples);
 
@@ -225,9 +227,9 @@ public:
 		props.setData("bitmap", bitmapData);
 		props.setAnimatedTransform("toWorld", m_worldTransform);
 		props.setFloat("samplingWeight", m_samplingWeight);
-		/* Pass the scale multiplied by 2 to the final computed envmap
+		/* Pass the scale multiplied by defined amount to the final computed envmap
 		   to undo the previous radiance operation */
-		props.setFloat("scale", m_scale * 2.0f);
+		props.setFloat("scale", m_scale * MTS_SUN_OVERFLOW_WORKAROUND);
 		Emitter *emitter = static_cast<Emitter *>(
 			PluginManager::getInstance()->createObject(
 			MTS_CLASS(Emitter), props));

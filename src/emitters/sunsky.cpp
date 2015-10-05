@@ -33,6 +33,8 @@
    0.526 and 0.545 depending on the time of year */
 #define SUN_APP_RADIUS 0.5358
 
+#define MTS_SUN_OVERFLOW_WORKAROUND 2.0f
+
 MTS_NAMESPACE_BEGIN
 
 /*!\plugin{sunsky}{Sun and sky emitter}
@@ -160,8 +162,8 @@ public:
 				RayDifferential ray(Point(0.0f),
 					toSphere(SphericalCoordinates(theta, phi)), 0.0f);
 
-				/* Multiply by .5, will be restored on final envmap */
-				*target++ = sky->evalEnvironment(ray) * 0.5f;
+				/* Divide to prevent overflow, will be restored on final envmap scale */
+				*target++ = sky->evalEnvironment(ray) / MTS_SUN_OVERFLOW_WORKAROUND;
 			}
 		}
 
@@ -206,10 +208,10 @@ public:
 			factor = Point2(bitmap->getWidth() / (2*M_PI),
 				bitmap->getHeight() / M_PI);
 
-			/* Multiply radiance by .5 to try to prevent values grater than
-			   the maximum allowed value of 65535 per pixel */
+			/* Divide radiance by defined value to try to prevent pixel overflow.
+			   The maximum allowed value per pixel is 65535 */
 			Spectrum value =
-				sunRadiance * 0.5f * (2 * M_PI * (1-std::cos(theta))) *
+				(sunRadiance / MTS_SUN_OVERFLOW_WORKAROUND) * (2 * M_PI * (1-std::cos(theta))) *
 				static_cast<Float>(bitmap->getWidth() * bitmap->getHeight())
 				/ (2 * M_PI * M_PI * nSamples);
 
@@ -239,9 +241,9 @@ public:
 		envProps.setData("bitmap", bitmapData);
 		envProps.setAnimatedTransform("toWorld", m_worldTransform);
 		envProps.setFloat("samplingWeight", m_samplingWeight);
-		/* Pass the scale multiplied by 2 to the final computed envmap
+		/* Pass the scale multiplied by defined value to the final computed envmap
 		   to undo the previous operations */
-		envProps.setFloat("scale", scale * 2.0f);
+		envProps.setFloat("scale", scale * MTS_SUN_OVERFLOW_WORKAROUND);
 		m_envEmitter = static_cast<Emitter *>(
 			PluginManager::getInstance()->createObject(
 			MTS_CLASS(Emitter), envProps));
