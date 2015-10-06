@@ -122,7 +122,7 @@ public:
 			  Transform::scale(Vector(1.0f / relSize.x, 1.0f / relSize.y, 1.0f))
 			* Transform::translate(Vector(-relOffset.x, -relOffset.y, 0.0f))
 			* Transform::scale(Vector(-0.5f * pixelAspect.x, -0.5f*m_aspect * pixelAspect.y, 1.0f))
-			* Transform::translate(Vector(-1.0f / pixelAspect.x, -1.0f/m_aspect / pixelAspect.y, 0.0f))
+			* Transform::translate(Vector(-1.0f / pixelAspect.x, -1.0f/(m_aspect * pixelAspect.y), 0.0f))
 			* Transform::orthographic(m_nearClip, m_farClip);
 
 		Point cameraScale(m_cameraToSample.inverse()(Point(0, 0, 0)));
