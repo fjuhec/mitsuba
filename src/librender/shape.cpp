@@ -71,9 +71,9 @@ void Shape::configure() {
 		addChild(bsdf);
 	}
 
-	if ((m_bsdf->getType() & BSDF::ENull) && (isEmitter() || isSensor() || hasSubsurface()))
+	if ((m_bsdf->getType() & BSDF::ENull) && (isSensor() || hasSubsurface()))
 		Log(EError, "Shape \"%s\" has an index-matched BSDF and an "
-			"emitter/sensor/subsurface attachment. This is not allowed!", getName().c_str());
+			"sensor/subsurface attachment. This is not allowed!", getName().c_str());
 }
 
 void Shape::adjustTime(Intersection &its, Float time) const {
