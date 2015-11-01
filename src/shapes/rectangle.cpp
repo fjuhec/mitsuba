@@ -78,60 +78,53 @@ MTS_NAMESPACE_BEGIN
 class Rectangle : public Shape {
 public:
 	Rectangle(const Properties &props) : Shape(props) {
-		m_objectToWorld = new AnimatedTransform(props.getAnimatedTransform("toWorld", Transform()));
-
+		m_objectToWorld = props.getTransform("toWorld", Transform());
 		if (props.getBoolean("flipNormals", false))
-			m_objectToWorld->prependScale(Vector(1, 1, -1));
+			m_objectToWorld = m_objectToWorld * Transform::scale(Vector(1, 1, -1));
+		m_worldToObject = m_objectToWorld.inverse();
 	}
 
 	Rectangle(Stream *stream, InstanceManager *manager)
 			: Shape(stream, manager) {
-		m_objectToWorld = new AnimatedTransform(stream);
+		m_objectToWorld = Transform(stream);
+		m_worldToObject = m_objectToWorld.inverse();
 		configure();
 	}
 
 	void serialize(Stream *stream, InstanceManager *manager) const {
 		Shape::serialize(stream, manager);
-		m_objectToWorld->serialize(stream);
+		m_objectToWorld.serialize(stream);
 	}
 
 	void configure() {
 		Shape::configure();
 
-		const Transform &trafo = m_objectToWorld->eval(0);
-		Vector dpdu = trafo(Vector(2, 0, 0));
-		Vector dpdv = trafo(Vector(0, 2, 0));
+		m_dpdu = m_objectToWorld(Vector(2, 0, 0));
+		m_dpdv = m_objectToWorld(Vector(0, 2, 0));
+		Normal normal = normalize(m_objectToWorld(Normal(0, 0, 1)));
+		m_frame = Frame(normalize(m_dpdu), normalize(m_dpdv), normal);
 
 		m_invSurfaceArea = 1.0f / getSurfaceArea();
-		if (std::abs(dot(normalize(dpdu), normalize(dpdv))) > Epsilon)
+		if (std::abs(dot(normalize(m_dpdu), normalize(m_dpdv))) > Epsilon)
 			Log(EError, "Error: 'toWorld' transformation contains shear!");
 	}
 
 	AABB getAABB() const {
-		std::set<Float> times;
-		m_objectToWorld->collectKeyframes(times);
-
 		AABB aabb;
-		for (std::set<Float>::iterator it = times.begin(); it != times.end(); ++it) {
-			const Transform &trafo = m_objectToWorld->eval(*it);
-			aabb.expandBy(trafo(Point(-1, -1, 0)));
-			aabb.expandBy(trafo(Point( 1, -1, 0)));
-			aabb.expandBy(trafo(Point( 1,  1, 0)));
-			aabb.expandBy(trafo(Point(-1,  1, 0)));
-		}
+		aabb.expandBy(m_objectToWorld(Point(-1, -1, 0)));
+		aabb.expandBy(m_objectToWorld(Point( 1, -1, 0)));
+		aabb.expandBy(m_objectToWorld(Point( 1,  1, 0)));
+		aabb.expandBy(m_objectToWorld(Point(-1,  1, 0)));
 		return aabb;
 	}
 
 	Float getSurfaceArea() const {
-		const Transform &trafo = m_objectToWorld->eval(0);
-		Vector dpdu = trafo(Vector(2, 0, 0));
-		Vector dpdv = trafo(Vector(0, 2, 0));
-		return dpdu.length() * dpdv.length();
+		return m_dpdu.length() * m_dpdv.length();
 	}
 
 	inline bool rayIntersect(const Ray &_ray, Float mint, Float maxt, Float &t, void *temp) const {
 		Ray ray;
-		m_objectToWorld->eval(_ray.time).inverse().transformAffine(_ray, ray);
+		m_worldToObject.transformAffine(_ray, ray);
 		Float hit = -ray.o.z / ray.d.z;
 
 		if (!(hit >= mint && hit <= maxt))
@@ -162,16 +155,11 @@ public:
 	void fillIntersectionRecord(const Ray &ray,
 			const void *temp, Intersection &its) const {
 		const Float *data = static_cast<const Float *>(temp);
-		const Transform &trafo = m_objectToWorld->eval(ray.time);
-		Vector dpdu = trafo(Vector(2, 0, 0));
-		Vector dpdv = trafo(Vector(0, 2, 0));
-		Normal normal = normalize(trafo(Normal(0, 0, 1)));
-		Frame frame = Frame(normalize(dpdu), normalize(dpdv), normal);
-		its.geoFrame = frame;
+		its.geoFrame = m_frame;
 		its.shFrame = its.geoFrame.n;
 		its.shape = this;
-		its.dpdu = dpdu;
-		its.dpdv = dpdv;
+		its.dpdu = m_dpdu;
+		its.dpdv = m_dpdv;
 		its.uv = Point2(0.5f * (data[0]+1), 0.5f * (data[1]+1));
 		its.p = ray(its.t);
  		its.hasUVPartials = false;
@@ -188,18 +176,17 @@ public:
 		Point2 *texcoords = mesh->getVertexTexcoords();
 		Triangle *triangles = mesh->getTriangles();
 
-		const Transform &trafo = m_objectToWorld->eval(0.0f);
-		vertices[0] = trafo(Point(-1, -1, 0));
-		vertices[1] = trafo(Point( 1, -1, 0));
-		vertices[2] = trafo(Point( 1,  1, 0));
-		vertices[3] = trafo(Point(-1,  1, 0));
+		vertices[0] = m_objectToWorld(Point(-1, -1, 0));
+		vertices[1] = m_objectToWorld(Point( 1, -1, 0));
+		vertices[2] = m_objectToWorld(Point( 1,  1, 0));
+		vertices[3] = m_objectToWorld(Point(-1,  1, 0));
 
 		texcoords[0] = Point2(0, 0);
 		texcoords[1] = Point2(1, 0);
 		texcoords[2] = Point2(1, 1);
 		texcoords[3] = Point2(0, 1);
 
-		normals[0] = normals[1] = normals[2] = normals[3] = normalize(trafo(Normal(0, 0, 1)));
+		normals[0] = normals[1] = normals[2] = normals[3] = m_frame.n;
 		triangles[0].idx[0] = 0;
 		triangles[0].idx[1] = 1;
 		triangles[0].idx[2] = 2;
@@ -221,9 +208,8 @@ public:
 	}
 
 	void samplePosition(PositionSamplingRecord &pRec, const Point2 &sample) const {
-		const Transform &trafo = m_objectToWorld->eval(pRec.time);
-		pRec.p = trafo(Point3(sample.x * 2 - 1, sample.y * 2 - 1, 0));
-		pRec.n = normalize(trafo(Normal(0, 0, 1)));
+		pRec.p = m_objectToWorld(Point3(sample.x * 2 - 1, sample.y * 2 - 1, 0));
+		pRec.n = m_frame.n;
 		pRec.pdf = m_invSurfaceArea;
 		pRec.measure = EArea;
 		pRec.uv = sample;
@@ -258,7 +244,10 @@ public:
 
 	MTS_DECLARE_CLASS()
 private:
-	ref<AnimatedTransform> m_objectToWorld;
+	Transform m_objectToWorld;
+	Transform m_worldToObject;
+	Frame m_frame;
+	Vector m_dpdu, m_dpdv;
 	Float m_invSurfaceArea;
 };
 

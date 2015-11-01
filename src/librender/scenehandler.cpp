@@ -699,8 +699,7 @@ void SceneHandler::endElement(const XMLCh* const xmlName) {
 				if (tag.second == MTS_CLASS(Shape)
 					&& props.hasProperty("toWorld")
 					&& props.getType("toWorld") == Properties::EAnimatedTransform
-					&& (props.getPluginName() != "instance" && props.getPluginName() != "disk"
-					&& props.getPluginName() != "rectangle" && props.getPluginName() != "sphere")) {
+					&& (props.getPluginName() != "instance" && props.getPluginName() != "disk")) {
 					/* (The 'disk' plugin also directly supports animated transformations, so
 					    the instancing trick isn't required for it) */
 

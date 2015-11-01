@@ -106,74 +106,67 @@ MTS_NAMESPACE_BEGIN
 class Sphere : public Shape {
 public:
 	Sphere(const Properties &props) : Shape(props) {
-		m_objectToWorld = new AnimatedTransform(props.getAnimatedTransform("toWorld", Transform()));
+		m_objectToWorld =
+			Transform::translate(Vector(props.getPoint("center", Point(0.0f))));
+		m_radius = props.getFloat("radius", 1.0f);
 
-		// TODO: might need something like prependTranslation
-		// Point center = props.getPoint("center", Point(0.0f));
-		Float radius = props.getFloat("radius", 1.0f);
-
-		if (radius != 1.0f)
-			m_objectToWorld->prependScale(Vector(radius));
-
-		radius = m_objectToWorld->eval(0)(Vector(1,0,0)).length();
+		if (props.hasProperty("toWorld")) {
+			Transform objectToWorld = props.getTransform("toWorld");
+			Float radius = objectToWorld(Vector(1,0,0)).length();
+			// Remove the scale from the object-to-world transform
+			m_objectToWorld =
+				  objectToWorld
+				* Transform::scale(Vector(1/radius))
+				* m_objectToWorld;
+			m_radius *= radius;
+		}
 
 		/// Are the sphere normals pointing inwards? default: no
 		m_flipNormals = props.getBoolean("flipNormals", false);
-		m_invSurfaceArea = 1/(4*M_PI*radius*radius);
+		m_center = m_objectToWorld(Point(0,0,0));
+		m_worldToObject = m_objectToWorld.inverse();
+		m_invSurfaceArea = 1/(4*M_PI*m_radius*m_radius);
 
-		if (radius <= 0)
+		if (m_radius <= 0)
 			Log(EError, "Cannot create spheres of radius <= 0");
 	}
 
 	Sphere(Stream *stream, InstanceManager *manager)
 			: Shape(stream, manager) {
-		m_objectToWorld = new AnimatedTransform(stream);
-		Float radius = m_objectToWorld->eval(0)(Vector(1,0,0)).length();
+		m_objectToWorld = Transform(stream);
+		m_radius = stream->readFloat();
+		m_center = Point(stream);
 		m_flipNormals = stream->readBool();
-		m_invSurfaceArea = 1/(4*M_PI*radius*radius);
+		m_worldToObject = m_objectToWorld.inverse();
+		m_invSurfaceArea = 1/(4*M_PI*m_radius*m_radius);
 	}
 
 	void serialize(Stream *stream, InstanceManager *manager) const {
 		Shape::serialize(stream, manager);
-		m_objectToWorld->serialize(stream);
+		m_objectToWorld.serialize(stream);
+		stream->writeFloat(m_radius);
+		m_center.serialize(stream);
 		stream->writeBool(m_flipNormals);
 	}
 
 	AABB getAABB() const {
-		std::set<Float> times;
-		m_objectToWorld->collectKeyframes(times);
-
 		AABB aabb;
-		for (std::set<Float>::iterator it = times.begin(); it != times.end(); ++it) {
-			const Transform &trafo = m_objectToWorld->eval(*it);
-
-			aabb.expandBy(trafo(Point( 1, 1, 1)));
-			aabb.expandBy(trafo(Point(-1, 1, 1)));
-			aabb.expandBy(trafo(Point( 1,-1, 1)));
-			aabb.expandBy(trafo(Point(-1,-1, 1)));
-			aabb.expandBy(trafo(Point( 1, 1,-1)));
-			aabb.expandBy(trafo(Point(-1, 1,-1)));
-			aabb.expandBy(trafo(Point( 1,-1,-1)));
-			aabb.expandBy(trafo(Point(-1,-1,-1)));
-		}
+		aabb.min = m_center - Vector(m_radius);
+		aabb.max = m_center + Vector(m_radius);
 		return aabb;
 	}
 
 	Float getSurfaceArea() const {
-		Float radius = m_objectToWorld->eval(0)(Vector(1,0,0)).length();
-		return 4*M_PI*radius*radius;
+		return 4*M_PI*m_radius*m_radius;
 	}
 
 	bool rayIntersect(const Ray &ray, Float mint, Float maxt, Float &t, void *tmp) const {
-		const Transform &trafo = m_objectToWorld->eval(ray.time);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
-		Vector3d o = Vector3d(ray.o) - Vector3d(center);
+		Vector3d o = Vector3d(ray.o) - Vector3d(m_center);
 		Vector3d d(ray.d);
 
 		double A = d.lengthSquared();
 		double B = 2 * dot(o, d);
-		double C = o.lengthSquared() - radius*radius;
+		double C = o.lengthSquared() - m_radius*m_radius;
 
 		double nearT, farT;
 		if (!solveQuadraticDouble(A, B, C, nearT, farT))
@@ -194,15 +187,12 @@ public:
 	}
 
 	bool rayIntersect(const Ray &ray, Float mint, Float maxt) const {
-		const Transform &trafo = m_objectToWorld->eval(ray.time);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
-		Vector3d o = Vector3d(ray.o) - Vector3d(center);
+		Vector3d o = Vector3d(ray.o) - Vector3d(m_center);
 		Vector3d d(ray.d);
 
 		double A = d.lengthSquared();
 		double B = 2 * dot(o, d);
-		double C = o.lengthSquared() - radius*radius;
+		double C = o.lengthSquared() - m_radius*m_radius;
 
 		double nearT, farT;
 		if (!solveQuadraticDouble(A, B, C, nearT, farT))
@@ -218,18 +208,15 @@ public:
 
 	void fillIntersectionRecord(const Ray &ray,
 			const void *temp, Intersection &its) const {
-		const Transform &trafo = m_objectToWorld->eval(ray.time);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
 		its.p = ray(its.t);
 
 		#if defined(SINGLE_PRECISION)
 			/* Re-project onto the sphere to limit cancellation effects */
-			its.p = center + normalize(its.p - center) * radius;
+			its.p = m_center + normalize(its.p - m_center) * m_radius;
 		#endif
 
-		Vector local = trafo.inverse()(its.p - center);
-		Float theta = math::safe_acos(local.z/radius);
+		Vector local = m_worldToObject(its.p - m_center);
+		Float theta = math::safe_acos(local.z/m_radius);
 		Float phi = std::atan2(local.y, local.x);
 
 		if (phi < 0)
@@ -237,8 +224,8 @@ public:
 
 		its.uv.x = phi * (0.5f * INV_PI);
 		its.uv.y = theta * INV_PI;
-		its.dpdu = trafo(Vector(-local.y, local.x, 0) * (2*M_PI));
-		its.geoFrame.n = normalize(its.p - center);
+		its.dpdu = m_objectToWorld(Vector(-local.y, local.x, 0) * (2*M_PI));
+		its.geoFrame.n = normalize(its.p - m_center);
 		Float zrad = std::sqrt(local.x*local.x + local.y*local.y);
 		its.shape = this;
 
@@ -246,34 +233,31 @@ public:
 			Float invZRad = 1.0f / zrad,
 				  cosPhi = local.x * invZRad,
 				  sinPhi = local.y * invZRad;
-			its.dpdv = trafo(Vector(local.z * cosPhi, local.z * sinPhi,
-					-std::sin(theta)*radius) * M_PI);
-			its.geoFrame.s = normalize(its.dpdu);
+			its.dpdv = m_objectToWorld(Vector(local.z * cosPhi, local.z * sinPhi,
+					-std::sin(theta)*m_radius) * M_PI);
+    		its.geoFrame.s = normalize(its.dpdu);
 			its.geoFrame.t = normalize(its.dpdv);
 		} else {
 			// avoid a singularity
 			const Float cosPhi = 0, sinPhi = 1;
-			its.dpdv = trafo(Vector(local.z * cosPhi, local.z * sinPhi,
-					-std::sin(theta)*radius) * M_PI);
+			its.dpdv = m_objectToWorld(Vector(local.z * cosPhi, local.z * sinPhi,
+					-std::sin(theta)*m_radius) * M_PI);
 			coordinateSystem(its.geoFrame.n, its.geoFrame.s, its.geoFrame.t);
 		}
 
 		if (m_flipNormals)
 			its.geoFrame.n *= -1;
 
-		its.shFrame.n = its.geoFrame.n;
-		its.hasUVPartials = false;
+ 		its.shFrame.n = its.geoFrame.n;
+ 		its.hasUVPartials = false;
 		its.instance = NULL;
 		its.time = ray.time;
 	}
 
 	void samplePosition(PositionSamplingRecord &pRec, const Point2 &sample) const {
-		const Transform &trafo = m_objectToWorld->eval(pRec.time);
 		Vector v = warp::squareToUniformSphere(sample);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
 
-		pRec.p = Point(v * radius) + center;
+		pRec.p = Point(v * m_radius) + m_center;
 		pRec.n = Normal(v);
 
 		if (m_flipNormals)
@@ -289,8 +273,7 @@ public:
 
 	void getNormalDerivative(const Intersection &its,
 			Vector &dndu, Vector &dndv, bool shadingFrame) const {
-		Float radius = m_objectToWorld->eval(0)(Vector(1,0,0)).length();
-		Float invRadius = (m_flipNormals ? -1.0f : 1.0f) / radius;
+		Float invRadius = (m_flipNormals ? -1.0f : 1.0f) / m_radius;
 		dndu = its.dpdu * invRadius;
 		dndv = its.dpdv * invRadius;
 	}
@@ -301,16 +284,13 @@ public:
 	 * Shirley, P. and Wang, C. and Zimmerman, K. (TOG 1996)
 	 */
 	void sampleDirect(DirectSamplingRecord &dRec, const Point2 &sample) const {
-		const Transform &trafo = m_objectToWorld->eval(dRec.time);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
-		const Vector refToCenter = center - dRec.ref;
+		const Vector refToCenter = m_center - dRec.ref;
 		const Float refDist2 = refToCenter.lengthSquared();
 		const Float invRefDist = static_cast<Float>(1) / std::sqrt(refDist2);
 
 		/* Sine of the angle of the cone containing the
 		   sphere as seen from 'dRec.ref' */
-		const Float sinAlpha = radius * invRefDist;
+		const Float sinAlpha = m_radius * invRefDist;
 
 		if (sinAlpha < 1-Epsilon) {
 			/* The reference point lies outside of the sphere.
@@ -332,14 +312,14 @@ public:
 			const Float baseT = refDist2 / projDist;
 			const Point query = dRec.ref + dRec.d * baseT;
 
-			const Vector queryToCenter = center - query;
+			const Vector queryToCenter = m_center - query;
 			const Float queryDist2     = queryToCenter.lengthSquared();
 			const Float queryProjDist  = dot(queryToCenter, dRec.d);
 
 			/* Try to find the intersection point between the
 			   sampled ray and the sphere. */
 			Float A = 1.0f, B = -2*queryProjDist,
-				  C = queryDist2 - radius*radius;
+				  C = queryDist2 - m_radius*m_radius;
 
 			Float nearT, farT;
 			if (!solveQuadratic(A, B, C, nearT, farT)) {
@@ -351,13 +331,13 @@ public:
 
 			dRec.dist = baseT + nearT;
 			dRec.n = normalize(dRec.d*nearT - queryToCenter);
-			dRec.p = center + dRec.n * radius;
+			dRec.p = m_center + dRec.n * m_radius;
 		} else {
 			/* The reference point lies inside the sphere
 			   => use uniform sphere sampling. */
 			Vector d = warp::squareToUniformSphere(sample);
 
-			dRec.p = center + d * radius;
+			dRec.p = m_center + d * m_radius;
 			dRec.n = Normal(d);
 			dRec.d = dRec.p - dRec.ref;
 
@@ -375,15 +355,12 @@ public:
 	}
 
 	Float pdfDirect(const DirectSamplingRecord &dRec) const {
-		const Transform &trafo = m_objectToWorld->eval(dRec.time);
-		Point center = trafo(Point(0,0,0));
-		Float radius = trafo(Vector(1,0,0)).length();
-		const Vector refToCenter = center - dRec.ref;
+		const Vector refToCenter = m_center - dRec.ref;
 		const Float invRefDist = (Float) 1.0f / refToCenter.length();
 
 		/* Sine of the angle of the cone containing the
 		   sphere as seen from 'dRec.ref' */
-		const Float sinAlpha = radius * invRefDist;
+		const Float sinAlpha = m_radius * invRefDist;
 
 		if (sinAlpha < 1-Epsilon) {
 			/* The reference point lies outside the sphere */
@@ -410,8 +387,6 @@ public:
 	}
 
 	ref<TriMesh> createTriMesh() {
-		const Transform &trafo = m_objectToWorld->eval(0);
-		Float radius = trafo(Vector(1,0,0)).length();
 		/// Choice of discretization
 		const uint32_t thetaSteps = 20;
 		const uint32_t phiSteps = thetaSteps * 2;
@@ -448,8 +423,8 @@ public:
 					cosTheta
 				);
 				texcoords[vertexIdx] = Point2(phi * dPhi * INV_TWOPI, theta * dTheta * INV_PI);
-				vertices[vertexIdx] = trafo(Point(v*radius));
-				normals[vertexIdx++] = trafo(Normal(v));
+				vertices[vertexIdx] = m_objectToWorld(Point(v*m_radius));
+				normals[vertexIdx++] = m_objectToWorld(Normal(v));
 			}
 		}
 		Assert(vertexIdx == numVertices);
@@ -493,7 +468,8 @@ public:
 	std::string toString() const {
 		std::ostringstream oss;
 		oss << "Sphere[" << endl
-			<< "  objectToWorld = " << indent(m_objectToWorld->toString()) << "," << endl
+			<< "  radius = " << m_radius << "," << endl
+			<< "  center = " << m_center.toString() << "," << endl
 			<< "  bsdf = " << indent(m_bsdf.toString()) << "," << endl;
 		if (isMediumTransition())
 			oss << "  interiorMedium = " << indent(m_interiorMedium.toString()) << "," << endl
@@ -507,7 +483,10 @@ public:
 
 	MTS_DECLARE_CLASS()
 private:
-	ref<AnimatedTransform> m_objectToWorld;
+	Transform m_objectToWorld;
+	Transform m_worldToObject;
+	Point m_center;
+	Float m_radius;
 	Float m_invSurfaceArea;
 	bool m_flipNormals;
 };
