@@ -332,7 +332,9 @@ public:
 
 	void addChild(const std::string &name, ConfigurableObject *child) {
 		if (child->getClass()->derivesFrom(MTS_CLASS(Texture))) {
-			if (name == "alphaU")
+			if (name == "alpha")
+				m_alphaU = m_alphaV = static_cast<Texture *>(child);
+			else if (name == "alphaU")
 				m_alphaU = static_cast<Texture *>(child);
 			else if (name == "alphaV")
 				m_alphaV = static_cast<Texture *>(child);
